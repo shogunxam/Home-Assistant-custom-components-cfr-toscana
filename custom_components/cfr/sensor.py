@@ -46,6 +46,8 @@ DEFAULT_NAME = 'CFRToscana'
 DEFAULT_STATIONID = 'TOS01004679'
 DEFAULT_TYPE = TYPE_IDRO
 
+ICON = {TYPE_IDRO : 'mdi:waves', TYPE_PLUVIO : 'mdi:weather-pouring',TYPE_TERMO : 'mdi:thermometer',TYPE_ANEMO :'mdi:weather-windy', TYPE_IGRO : 'mdi:water-percent'}
+
 SCAN_INTERVAL = timedelta(minutes=5)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
@@ -94,7 +96,6 @@ class cfr(Entity):
         if len(tds) > 5:
             self._state = 'on'
             lastEvent = tds[-1]
-            print (lastEvent)
 
             try:
                 print(lastEvent[1])
@@ -119,7 +120,6 @@ class cfr(Entity):
                 self._value2 = lastEvent[3]
             except IndexError:
                 self._value2 = None
-                print(self._date, self._time)
         else :
             self._state = None
             self._date = None
@@ -143,7 +143,7 @@ class cfr(Entity):
     @property
     def icon(self):
         """Return the icon of the sensor."""
-        return 'mdi:chart-bar'
+        return ICON[self._type]
 
     @property
     def unit_of_measurement(self):
