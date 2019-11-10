@@ -1,4 +1,5 @@
 
+
 from datetime import timedelta
 import logging
 import urllib.request
@@ -98,12 +99,9 @@ class cfr(Entity):
             lastEvent = tds[-1]
 
             try:
-                print(lastEvent[1])
                 date_time = re.findall(r'(\d{2}\/\d{2}\/\d{4}) (\d{2}.\d{2})', lastEvent[1])
-                print(date_time[0])
                 self._date = date_time[0][0]
                 self._time = date_time[0][1]
-                print(self._date, self._time)
             except IndexError:
                 self._date = None
                 self._time = None
@@ -127,8 +125,6 @@ class cfr(Entity):
             self._value1 = None
             self._value2 = None
         self._state = self._value1
-        
-        print(self._date, self._time, self._value1, self._value2)
 
     @property
     def name(self):
@@ -184,5 +180,4 @@ class cfr(Entity):
             attributes[ATTR_UMIDITA] = self._value1          
 
         return attributes
-
 
