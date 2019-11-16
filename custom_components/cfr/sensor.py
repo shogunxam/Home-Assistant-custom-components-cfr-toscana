@@ -1,11 +1,15 @@
 
-
 from datetime import timedelta
+from datetime import datetime
+from threading import Thread, Lock
+
 import logging
+import copy
 import urllib.request
 import re
 import json
 import voluptuous as vol
+import time
 
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.const import (CONF_NAME, STATE_UNKNOWN, TEMP_CELSIUS, LENGTH_METERS, SPEED_MS)
@@ -48,6 +52,7 @@ DEFAULT_STATIONID = 'TOS01004679'
 DEFAULT_TYPE = TYPE_IDRO
 
 ICON = {TYPE_IDRO : 'mdi:waves', TYPE_PLUVIO : 'mdi:weather-pouring',TYPE_TERMO : 'mdi:thermometer',TYPE_ANEMO :'mdi:weather-windy', TYPE_IGRO : 'mdi:water-percent'}
+UNITS = {TYPE_IDRO : LENGTH_METERS, TYPE_PLUVIO : 'mm',TYPE_TERMO : TEMP_CELSIUS,TYPE_ANEMO :'ms', TYPE_IGRO : '%'}
 
 SCAN_INTERVAL = timedelta(minutes=5)
 
@@ -58,12 +63,14 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
         vol.In(STATION_TYPES),
 })
 
-def setup_platform(hass, config, add_entities, discovery_info=None):
+async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the platform."""
+    sensors = []
     name = config.get(CONF_NAME)
     stationID = config.get(CONF_STATIONID)
     dataType = config.get(CONF_TYPE)
-    add_entities([cfr(name,stationID, dataType)])
+    sensors.append(cfr(name, stationID, dataType))
+    async_add_entities(sensors)
 
 
 class cfr(Entity):
@@ -72,59 +79,20 @@ class cfr(Entity):
     def __init__(self, name, stationID, dataType):
         """Initialize the sensor platform."""
         self._name = name
-        self._stationID = stationID
+        self._updater = cfrUpdater(stationID, dataType, self.UpdateNeeded)
         self._type = dataType
-        self._state = None
-        self._date = None
-        self._time = None
-        self._value1 = None
-        self._value2 = None
-        self.update()
-
-    @Throttle(SCAN_INTERVAL)
-    def update(self):
-
+        self._unit = UNITS[ self._type]
+        self._icon = ICON[ self._type]
+        self.data = cfr_data()
+        self._updater.StartUpdate()
+        
+    async def async_update(self):
         """Update the sensor values."""
-        url = "http://www.cfr.toscana.it/monitoraggio/dettaglio.php?id="+self._stationID+"&type="+self._type
-        req = urllib.request.Request(url)
-        resp = urllib.request.urlopen(req)
-        respData = resp.read()
+        self.data = self._updater.GetLastData()
 
-        tds = re.findall(r'VALUES\[\d+\] = new Array\("(.*?)","(.*?)","(.*?)","(.*?)"\);',str(respData))
-
-        self._value3 = None
-
-        if len(tds) > 5:
-            self._state = 'on'
-            lastEvent = tds[-1]
-
-            try:
-                date_time = re.findall(r'(\d{2}\/\d{2}\/\d{4}) (\d{2}.\d{2})', lastEvent[1])
-                self._date = date_time[0][0]
-                self._time = date_time[0][1]
-            except IndexError:
-                self._date = None
-                self._time = None
-            try:
-                self._value1 = lastEvent[2]
-                if self._type== TYPE_ANEMO:
-                    values = self._value1.split("/")
-                    self._value1 = values[0]
-                    self._value3 = values[1]
-                
-            except IndexError:
-                self._value1 = None
-            try:
-                self._value2 = lastEvent[3]
-            except IndexError:
-                self._value2 = None
-        else :
-            self._state = None
-            self._date = None
-            self._time = None
-            self._value1 = None
-            self._value2 = None
-        self._state = self._value1
+    def UpdateNeeded(self):
+        """Ask to Home Assistant to schedule an update of the sensor"""
+        self.async_schedule_update_ha_state(True)
 
     @property
     def name(self):
@@ -134,50 +102,138 @@ class cfr(Entity):
     @property
     def state(self):
         """Return the state of the sensor."""
-        return self._state
+        return self.data.state
 
     @property
     def icon(self):
         """Return the icon of the sensor."""
-        return ICON[self._type]
+        return self._icon
 
     @property
     def unit_of_measurement(self):
         """Return the unit of measurement."""
-        if self._type == TYPE_IDRO :
-            return LENGTH_METERS
-        elif self._type == TYPE_PLUVIO:
-            return 'mm'
-        elif self._type == TYPE_ANEMO:
-            return 'ms'
-        elif self._type == TYPE_TERMO:
-            return TEMP_CELSIUS
-        elif self._type == TYPE_IGRO:
-            return '%'
+        return self._unit
+
+    @property
+    def should_poll(self):
+        """Updates are requested when new data is available by the cfrUpdater"""
+        return False
 
     @property
     def device_state_attributes(self):
         """Return attributes of the sensor."""
         #Common attributes
         attributes = {}
-        attributes[ATTR_DATE] = self._date
-        attributes[ATTR_TIME] = self._time
+        attributes[ATTR_DATE] = self.data.date
+        attributes[ATTR_TIME] = self.data.time
         
         #Specific Attributes
         if self._type == TYPE_IDRO :
-            attributes[ATTR_ALTEZZA] = self._value1
-            attributes[ATTR_PORTATA] = self._value2
+            attributes[ATTR_ALTEZZA] = self.data.value1
+            attributes[ATTR_PORTATA] = self.data.value2
         elif  self._type == TYPE_PLUVIO: 
-            attributes[ATTR_ACCUMULO] = self._value1
-            attributes[ATTR_PRECIPITAZIONI] = self._value2
+            attributes[ATTR_ACCUMULO] = self.data.value1
+            attributes[ATTR_PRECIPITAZIONI] = self.data.value2
         elif  self._type == TYPE_ANEMO:            
-            attributes[ATTR_VELOCITA] = self._value1
-            attributes[ATTR_RAFFICA] = self._value3
-            attributes[ATTR_DIREZIONE] = self._value2
+            attributes[ATTR_VELOCITA] = self.data.value1
+            attributes[ATTR_RAFFICA] = self.data.value3
+            attributes[ATTR_DIREZIONE] = self.data.value2
         elif  self._type == TYPE_TERMO:
-            attributes[ATTR_TEMPERATURA] = self._value1
+            attributes[ATTR_TEMPERATURA] = self.data.value1
         elif  self._type == TYPE_IGRO:
-            attributes[ATTR_UMIDITA] = self._value1          
+            attributes[ATTR_UMIDITA] = self.data.value1          
 
         return attributes
+
+class cfr_data:
+    def __init__(self):
+        self.state = None
+        self.date = None
+        self.time = None
+        self.value1 = None
+        self.value2 = None
+        self.value3 = None
+
+class cfrUpdater:
+    def __init__(self, stationID, dataType, callback):
+        self._stationID = stationID
+        self._type = dataType
+        self._lastData = cfr_data()
+        self._data = cfr_data()
+        self.updateThread = Thread(target=self.updateLoop)
+        self.mutex = Lock()
+        self.updaterequiredCallback  = callback
+    
+    def StartUpdate(self):
+        """Starts the Thread  used to updatethe sensor"""
+        self.updateThread.start()
+
+    def GetLastData(self):
+        """Returns the last available data"""
+        self.mutex.acquire()
+        try:
+            lastData = copy.deepcopy(self._lastData)
+        finally:
+            self.mutex.release()
+        return lastData
+
+    def updateLoop(self):
+        """Main update loop"""
+        while (True):            
+            """Update the sensor values."""
+            url = "http://www.cfr.toscana.it/monitoraggio/dettaglio.php?id="+self._stationID+"&type="+self._type+"&"+str(time.time())
+            req = urllib.request.Request(url)
+            resp = urllib.request.urlopen(req)
+            respData = resp.read()
+            dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            tds = re.findall(r'VALUES\[\d+\] = new Array\("(.*?)","(.*?)","(.*?)","(.*?)"\);',str(respData))
+
+            self._value3 = None
+
+            needUpdate = False
+
+            if len(tds) > 5:
+                lastEvent = tds[-1]
+
+                try:
+                    date_time = re.findall(r'(\d{2}\/\d{2}\/\d{4}) (\d{2}.\d{2})', lastEvent[1])
+                    self._data.date = date_time[0][0]
+                    self._data.time = date_time[0][1]
+                except IndexError:
+                    self._data.date = None
+                    self._data.time = None
+
+                if self._lastData.date !=  self._data.date or self._lastData.time !=  self._data.time:
+                    needUpdate = True
+                    try:
+                        self._data.value1 = lastEvent[2]
+                        if self._type== TYPE_ANEMO:
+                            values = self._data.value1.split("/")
+                            self._data.value1 = values[0]
+                            self._data.value3 = values[1]
+                        
+                    except IndexError:
+                        self._data.value1 = None
+                    try:
+                        self._data.value2 = lastEvent[3]
+                    except IndexError:
+                        self._data.value2 = None
+            else :
+                self._data.state = None
+                self._data.date = None
+                self._data.time = None
+                self._data.value1 = None
+                self._data.value2 = None
+            self._data.state = self._data.value1
+
+            if needUpdate :
+                #Make a copy of the data to be returned
+                self.mutex.acquire()
+                try:
+                    self._lastData = copy.deepcopy(self._data)
+                finally:
+                    self.mutex.release()
+                self.updaterequiredCallback()
+            time.sleep(60)
+
 
