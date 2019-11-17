@@ -52,7 +52,7 @@ DEFAULT_STATIONID = 'TOS01004679'
 DEFAULT_TYPE = TYPE_IDRO
 
 ICON = {TYPE_IDRO : 'mdi:waves', TYPE_PLUVIO : 'mdi:weather-pouring',TYPE_TERMO : 'mdi:thermometer',TYPE_ANEMO :'mdi:weather-windy', TYPE_IGRO : 'mdi:water-percent'}
-UNITS = {TYPE_IDRO : LENGTH_METERS, TYPE_PLUVIO : 'mm',TYPE_TERMO : TEMP_CELSIUS,TYPE_ANEMO :'ms', TYPE_IGRO : '%'}
+UNITS = {TYPE_IDRO : LENGTH_METERS, TYPE_PLUVIO : 'mm',TYPE_TERMO : TEMP_CELSIUS,TYPE_ANEMO :'m/s', TYPE_IGRO : '%'}
 
 SCAN_INTERVAL = timedelta(minutes=5)
 
