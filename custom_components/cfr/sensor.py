@@ -10,6 +10,7 @@ import re
 import json
 import voluptuous as vol
 import time
+#import traceback
 
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.const import (CONF_NAME, STATE_UNKNOWN, TEMP_CELSIUS, LENGTH_METERS, SPEED_MS)
@@ -179,14 +180,20 @@ class cfrUpdater:
 
     def updateLoop(self):
         """Main update loop"""
-        while (True):            
-            """Update the sensor values."""
-            url = "http://www.cfr.toscana.it/monitoraggio/dettaglio.php?id="+self._stationID+"&type="+self._type+"&"+str(time.time())
-            req = urllib.request.Request(url)
-            resp = urllib.request.urlopen(req)
-            respData = resp.read()
-            dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-            tds = re.findall(r'VALUES\[\d+\] = new Array\("(.*?)","(.*?)","(.*?)","(.*?)"\);',str(respData))
+        while (True): 
+            try:           
+                """Update the sensor values."""
+                url = "http://www.cfr.toscana.it/monitoraggio/dettaglio.php?id="+self._stationID+"&type="+self._type+"&"+str(time.time())
+                req = urllib.request.Request(url)
+                resp = urllib.request.urlopen(req)
+                respData = resp.read()
+                tds = re.findall(r'VALUES\[\d+\] = new Array\("(.*?)","(.*?)","(.*?)","(.*?)"\);',str(respData))
+            except:
+                print("CFR: An exception occurred reading from url: ", url)
+                print("CFR: Retring in 5 seconds.")
+                #traceback.print_exc()
+                time.sleep(5)
+                continue
 
             self._value3 = None
 
