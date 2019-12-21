@@ -10,7 +10,7 @@ import re
 import json
 import voluptuous as vol
 import time
-import traceback
+#import traceback
 
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.const import (CONF_NAME, STATE_UNKNOWN, TEMP_CELSIUS, LENGTH_METERS, SPEED_MS)
@@ -86,6 +86,7 @@ class cfr(Entity):
         self._icon = ICON[ self._type]
         self.data = cfr_data()
         self._updater.StartUpdate()
+        _LOGGER.info('Component %s initialized', name)
         
     async def async_update(self):
         """Update the sensor values."""
@@ -166,7 +167,7 @@ class cfrUpdater:
         self.updaterequiredCallback  = callback
     
     def StartUpdate(self):
-        """Starts the Thread  used to updatethe sensor"""
+        """Starts the Thread  used to update the sensor"""
         self.updateThread.start()
 
     def GetLastData(self):
@@ -180,68 +181,74 @@ class cfrUpdater:
 
     def updateLoop(self):
         """Main update loop"""
-        while (True): 
-            try:           
-                """Update the sensor values."""
-                url = "http://www.cfr.toscana.it/monitoraggio/dettaglio.php?id="+self._stationID+"&type="+self._type+"&"+str(time.time())
-                req = urllib.request.Request(url)
-                with urllib.request.urlopen(req,timeout=10) as response:
-                   respData = response.read()
-                tds = re.findall(r'VALUES\[\d+\] = new Array\("(.*?)","(.*?)","(.*?)","(.*?)"\);',str(respData))
-            except:
-                _LOGGER.error('Connection to the site timed out at URL %s', url)
-                print("CFR: An exception occurred reading from url: ", url)
-                print("CFR: Retring in 5 seconds")
-                #traceback.print_exc()
-                time.sleep(5)
-                continue
+        try:
+            _LOGGER.info('Updater loop started (station:%s  dataType:%s', self._stationID, self._type)
+            while (True): 
+                try:           
+                    """Update the sensor values."""
+                    url = "http://www.cfr.toscana.it/monitoraggio/dettaglio.php?id="+self._stationID+"&type="+self._type+"&"+str(time.time())
+                    req = urllib.request.Request(url)
+                    with urllib.request.urlopen(req,timeout=10) as response:
+                        respData = response.read()
+                    tds = re.findall(r'VALUES\[\d+\] = new Array\("(.*?)","(.*?)","(.*?)","(.*?)"\);',str(respData))
+                except:
+                    _LOGGER.error('Connection to the site timed out at URL %s', url)
+                    print("CFR: An exception occurred reading from url: ", url)
+                    print("CFR: Retring in 5 seconds.")
+                    #traceback.print_exc()
+                    time.sleep(5)
+                    continue
 
-            self._value3 = None
+                self._value3 = None
 
-            needUpdate = False
+                needUpdate = False
 
-            if len(tds) > 5:
-                lastEvent = tds[-1]
+                if len(tds) > 5:
+                    lastEvent = tds[-1]
 
-                try:
-                    date_time = re.findall(r'(\d{2}\/\d{2}\/\d{4}) (\d{2}.\d{2})', lastEvent[1])
-                    self._data.date = date_time[0][0]
-                    self._data.time = date_time[0][1]
-                except IndexError:
+                    try:
+                        date_time = re.findall(r'(\d{2}\/\d{2}\/\d{4}) (\d{2}.\d{2})', lastEvent[1])
+                        self._data.date = date_time[0][0]
+                        self._data.time = date_time[0][1]
+                    except IndexError:
+                        _LOGGER.error('Error parsing date/time from url %s (station:%s  dataType:%s)', url, self._stationID, self._type)
+                        self._data.date = None
+                        self._data.time = None
+
+                    if self._lastData.date !=  self._data.date or self._lastData.time !=  self._data.time:
+                        needUpdate = True
+                        try:
+                            self._data.value1 = lastEvent[2]
+                            if self._type== TYPE_ANEMO:
+                                values = self._data.value1.split("/")
+                                self._data.value1 = values[0]
+                                self._data.value3 = values[1]
+                            
+                        except IndexError:
+                            self._data.value1 = None
+                        try:
+                            self._data.value2 = lastEvent[3]
+                        except IndexError:
+                            self._data.value2 = None
+                else :
+                    _LOGGER.error('Error parsing data from url %s (station:%s  dataType:%s)', url, self._stationID, self._type)
+                    self._data.state = None
                     self._data.date = None
                     self._data.time = None
+                    self._data.value1 = None
+                    self._data.value2 = None
+                self._data.state = self._data.value1
 
-                if self._lastData.date !=  self._data.date or self._lastData.time !=  self._data.time:
-                    needUpdate = True
+                if needUpdate :
+                    #Make a copy of the data to be returned
+                    self.mutex.acquire()
                     try:
-                        self._data.value1 = lastEvent[2]
-                        if self._type== TYPE_ANEMO:
-                            values = self._data.value1.split("/")
-                            self._data.value1 = values[0]
-                            self._data.value3 = values[1]
-                        
-                    except IndexError:
-                        self._data.value1 = None
-                    try:
-                        self._data.value2 = lastEvent[3]
-                    except IndexError:
-                        self._data.value2 = None
-            else :
-                self._data.state = None
-                self._data.date = None
-                self._data.time = None
-                self._data.value1 = None
-                self._data.value2 = None
-            self._data.state = self._data.value1
-
-            if needUpdate :
-                #Make a copy of the data to be returned
-                self.mutex.acquire()
-                try:
-                    self._lastData = copy.deepcopy(self._data)
-                finally:
-                    self.mutex.release()
-                self.updaterequiredCallback()
-            time.sleep(60)
+                        self._lastData = copy.deepcopy(self._data)
+                    finally:
+                        self.mutex.release()
+                    self.updaterequiredCallback()
+                time.sleep(60)
+        except:
+            _LOGGER.error('Updater loop unespectedly endend (station:%s  dataType:%s', self._stationID, self._type)
 
 
