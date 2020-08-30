@@ -80,14 +80,18 @@ class cfr(Entity):
     def __init__(self, name, stationID, dataType):
         """Initialize the sensor platform."""
         self._name = name
-        self._updater = cfrUpdater(stationID, dataType, self.UpdateNeeded)
         self._type = dataType
+        self._stationID = stationID
         self._unit = UNITS[ self._type]
         self._icon = ICON[ self._type]
         self.data = cfr_data()
-        self._updater.StartUpdate()
         _LOGGER.info('Component %s initialized', name)
-        
+
+    async def async_added_to_hass(self):
+        _LOGGER.info('Component %s added to hass', self._name)
+        self._updater = cfrUpdater(self._stationID, self._type , self.UpdateNeeded)
+        self._updater.StartUpdate()
+
     async def async_update(self):
         """Update the sensor values."""
         self.data = self._updater.GetLastData()
