@@ -151,6 +151,33 @@ class cfr(Entity):
 
         return attributes
 
+    @property
+    def extra_state_attributes(self):
+        """Return attributes of the sensor."""
+        #Common attributes
+        attributes = {}
+        attributes[ATTR_DATE] = self.data.date
+        attributes[ATTR_TIME] = self.data.time
+        
+        #Specific Attributes
+        if self._type == TYPE_IDRO :
+            attributes[ATTR_ALTEZZA] = self.data.value1
+            attributes[ATTR_PORTATA] = self.data.value2
+        elif  self._type == TYPE_PLUVIO: 
+            attributes[ATTR_ACCUMULO] = self.data.value1
+            attributes[ATTR_PRECIPITAZIONI] = self.data.value2
+        elif  self._type == TYPE_ANEMO:            
+            attributes[ATTR_VELOCITA] = self.data.value1
+            attributes[ATTR_RAFFICA] = self.data.value3
+            attributes[ATTR_DIREZIONE] = self.data.value2
+        elif  self._type == TYPE_TERMO:
+            attributes[ATTR_TEMPERATURA] = self.data.value1
+        elif  self._type == TYPE_IGRO:
+            attributes[ATTR_UMIDITA] = self.data.value1 
+
+        return attributes
+
+
 class cfr_data:
     def __init__(self):
         self.state = None
