@@ -1,5 +1,6 @@
 {
   "name": "cfr sensor",
   "domains": ["sensor"],
-  "country": ["IT"]
+  "country": ["IT"],
+  "homeassistant": "2021.12.0"
 }
