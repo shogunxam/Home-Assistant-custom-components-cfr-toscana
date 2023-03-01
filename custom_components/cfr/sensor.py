@@ -220,7 +220,7 @@ class cfrUpdater:
                         """Update the sensor values."""
                         url = "http://www.cfr.toscana.it/monitoraggio/dettaglio.php?id="+self._stationID+"&type="+self._type+"&"+str(time.time())
                         req = urllib.request.Request(url)
-                        with urllib.request.urlopen(req,timeout=10) as response:
+                        with urllib.request.urlopen(req,timeout=30) as response:
                             respData = response.read()
                         tds = re.findall(r'VALUES\[\d+\] = new Array\("(.*?)","(.*?)","(.*?)","(.*?)"\);',str(respData))
                     except:
