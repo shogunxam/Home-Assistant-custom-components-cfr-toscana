@@ -18,6 +18,7 @@ Platform | Description
 | `name` | `string` | `False` | `CFRToscana` | Name of sensor |
 | `station` | `string` | `True` | - | Station code |
 | `type` | `string` | `False` | `idro` | Type of the monitored data |
+| `timeout` | `integer` | `False` | `30` | Connection timeout |
 
 ### Possible values for type
 
@@ -29,7 +30,7 @@ Platform | Description
 | `anemo` | Wind speed |
 | `igro` | Humidity |
 
-The same sation can monitor one or more data types, please reffer to [*CENTRO FUNZIONALE*](http://www.cfr.toscana.it/) to understand which data types are monitored.
+The same sation can monitor one or more data types, please refer to [*CENTRO FUNZIONALE*](http://www.cfr.toscana.it/) to understand which data types are monitored.
 <br>
 
 | Stations' code by data type | |
