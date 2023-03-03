@@ -34,6 +34,7 @@ STATION_TYPES = [TYPE_IDRO,TYPE_PLUVIO,TYPE_TERMO,TYPE_ANEMO,TYPE_IGRO]
 
 CONF_STATIONID = 'station'
 CONF_TYPE = 'type'
+CONF_TIMEOUT = 'timeout'
 
 ATTR_DATE = 'data'
 ATTR_TIME = 'time'
@@ -51,6 +52,7 @@ DEFAULT_NAME = 'CFRToscana'
 #Arno Firenze Uffizi
 DEFAULT_STATIONID = 'TOS01004679'
 DEFAULT_TYPE = TYPE_IDRO
+DEFAULT_TIMEOUT = 30
 
 ICON = {TYPE_IDRO : 'mdi:waves', TYPE_PLUVIO : 'mdi:weather-pouring',TYPE_TERMO : 'mdi:thermometer',TYPE_ANEMO :'mdi:weather-windy', TYPE_IGRO : 'mdi:water-percent'}
 UNITS = {TYPE_IDRO : LENGTH_METERS, TYPE_PLUVIO : 'mm',TYPE_TERMO : TEMP_CELSIUS,TYPE_ANEMO :'m/s', TYPE_IGRO : '%'}
@@ -59,6 +61,7 @@ SCAN_INTERVAL = timedelta(minutes=5)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+    vol.Optional(CONF_TIMEOUT, default=DEFAULT_TIMEOUT): cv.positive_int,
     vol.Required(CONF_STATIONID): cv.string,
     vol.Required(CONF_TYPE): 
         vol.In(STATION_TYPES),
@@ -69,18 +72,20 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     sensors = []
     name = config.get(CONF_NAME)
     stationID = config.get(CONF_STATIONID)
+    timeout = config.get(CONF_TIMEOUT)
     dataType = config.get(CONF_TYPE)
-    sensors.append(cfr(name, stationID, dataType))
+    sensors.append(cfr(name, stationID, dataType, timeout))
     async_add_entities(sensors)
 
 
 class cfr(Entity):
     """The sensor class."""
 
-    def __init__(self, name, stationID, dataType):
+    def __init__(self, name, stationID, dataType, timeout):
         """Initialize the sensor platform."""
         self._name = name
         self._type = dataType
+        self._timeout = timeout
         self._stationID = stationID
         self._unit = UNITS[ self._type]
         self._icon = ICON[ self._type]
@@ -89,7 +94,7 @@ class cfr(Entity):
 
     async def async_added_to_hass(self):
         _LOGGER.info('Component %s added to hass', self._name)
-        self._updater = cfrUpdater(self._stationID, self._type , self.UpdateNeeded)
+        self._updater = cfrUpdater(self._stationID, self._type , self.UpdateNeeded, self._timeout)
         self._updater.StartUpdate()
 
     async def async_update(self):
@@ -140,14 +145,14 @@ class cfr(Entity):
         elif  self._type == TYPE_PLUVIO: 
             attributes[ATTR_ACCUMULO] = self.data.value1
             attributes[ATTR_PRECIPITAZIONI] = self.data.value2
-        elif  self._type == TYPE_ANEMO:            
+        elif  self._type == TYPE_ANEMO: 
             attributes[ATTR_VELOCITA] = self.data.value1
             attributes[ATTR_RAFFICA] = self.data.value3
             attributes[ATTR_DIREZIONE] = self.data.value2
         elif  self._type == TYPE_TERMO:
             attributes[ATTR_TEMPERATURA] = self.data.value1
         elif  self._type == TYPE_IGRO:
-            attributes[ATTR_UMIDITA] = self.data.value1          
+            attributes[ATTR_UMIDITA] = self.data.value1
 
         return attributes
 
@@ -166,7 +171,7 @@ class cfr(Entity):
         elif  self._type == TYPE_PLUVIO: 
             attributes[ATTR_ACCUMULO] = self.data.value1
             attributes[ATTR_PRECIPITAZIONI] = self.data.value2
-        elif  self._type == TYPE_ANEMO:            
+        elif  self._type == TYPE_ANEMO:
             attributes[ATTR_VELOCITA] = self.data.value1
             attributes[ATTR_RAFFICA] = self.data.value3
             attributes[ATTR_DIREZIONE] = self.data.value2
@@ -188,14 +193,15 @@ class cfr_data:
         self.value3 = None
 
 class cfrUpdater:
-    def __init__(self, stationID, dataType, callback):
+    def __init__(self, stationID, dataType, callback, timeout):
         self._stationID = stationID
         self._type = dataType
+        self._timeout = timeout
         self._lastData = cfr_data()
         self._data = cfr_data()
         self.updateThread = Thread(target=self.updateLoop)
         self.mutex = Lock()
-        self.updaterequiredCallback  = callback
+        self.updaterequiredCallback = callback
     
     def StartUpdate(self):
         """Starts the Thread  used to update the sensor"""
@@ -220,13 +226,13 @@ class cfrUpdater:
                         """Update the sensor values."""
                         url = "http://www.cfr.toscana.it/monitoraggio/dettaglio.php?id="+self._stationID+"&type="+self._type+"&"+str(time.time())
                         req = urllib.request.Request(url)
-                        with urllib.request.urlopen(req,timeout=30) as response:
+                        with urllib.request.urlopen(req,timeout=self._timeout) as response:
                             respData = response.read()
                         tds = re.findall(r'VALUES\[\d+\] = new Array\("(.*?)","(.*?)","(.*?)","(.*?)"\);',str(respData))
                     except:
                         _LOGGER.error('Connection to the site timed out at URL %s', url)
                         print("CFR: An exception occurred reading from url: ", url)
-                        print("CFR: Retring in 5 seconds.")
+                        print("CFR: Retrying in 5 seconds.")
                         #traceback.print_exc()
                         time.sleep(5)
                         continue
@@ -281,7 +287,7 @@ class cfrUpdater:
                         self.updaterequiredCallback()
                     time.sleep(60)
             except:
-                _LOGGER.error('Updater loop unespectedly endend (station:%s  dataType:%s) restarts in 60 seconds', self._stationID, self._type)
+                _LOGGER.error('Updater loop unexpectedly ended (station:%s  dataType:%s) restarts in 60 seconds', self._stationID, self._type)
                 time.sleep(60)
 
 
