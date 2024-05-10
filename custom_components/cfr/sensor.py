@@ -10,10 +10,13 @@ import re
 import json
 import voluptuous as vol
 import time
+import random
+
 #import traceback
 
 from homeassistant.components.sensor import PLATFORM_SCHEMA
-from homeassistant.const import (CONF_NAME, STATE_UNKNOWN, TEMP_CELSIUS, LENGTH_METERS, SPEED_METERS_PER_SECOND)
+from homeassistant.const import (CONF_NAME, STATE_UNKNOWN)
+from homeassistant.const import (UnitOfTemperature, UnitOfLength, UnitOfSpeed)
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers.entity import Entity
@@ -23,7 +26,7 @@ import homeassistant.helpers.config_validation as cv
 
 _LOGGER = logging.getLogger(__name__)
 
-__version__ = '1.1.0'
+__version__ = '1.2.0'
 
 TYPE_IDRO = 'idro'
 TYPE_PLUVIO = 'pluvio'
@@ -55,7 +58,7 @@ DEFAULT_TYPE = TYPE_IDRO
 DEFAULT_TIMEOUT = 30
 
 ICON = {TYPE_IDRO : 'mdi:waves', TYPE_PLUVIO : 'mdi:weather-pouring',TYPE_TERMO : 'mdi:thermometer',TYPE_ANEMO :'mdi:weather-windy', TYPE_IGRO : 'mdi:water-percent'}
-UNITS = {TYPE_IDRO : LENGTH_METERS, TYPE_PLUVIO : 'mm',TYPE_TERMO : TEMP_CELSIUS,TYPE_ANEMO :'m/s', TYPE_IGRO : '%'}
+UNITS = {TYPE_IDRO : UnitOfLength.METERS, TYPE_PLUVIO : 'mm',TYPE_TERMO : UnitOfTemperature.CELSIUS,TYPE_ANEMO :UnitOfSpeed.METERS_PER_SECOND, TYPE_IGRO : '%'}
 
 SCAN_INTERVAL = timedelta(minutes=5)
 
@@ -103,7 +106,7 @@ class cfr(Entity):
 
     def UpdateNeeded(self):
         """Ask to Home Assistant to schedule an update of the sensor"""
-        self.async_schedule_update_ha_state(True)
+        self.schedule_update_ha_state(True)
 
     @property
     def name(self):
@@ -226,11 +229,15 @@ class cfrUpdater:
                         """Update the sensor values."""
                         url = "http://www.cfr.toscana.it/monitoraggio/dettaglio.php?id="+self._stationID+"&type="+self._type+"&"+str(time.time())
                         req = urllib.request.Request(url)
+                        req.add_header('User-agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36')
+                        t = random.randint(1, 3)
+                        time.sleep(t)
                         with urllib.request.urlopen(req,timeout=self._timeout) as response:
                             respData = response.read()
                         tds = re.findall(r'VALUES\[\d+\] = new Array\("(.*?)","(.*?)","(.*?)","(.*?)"\);',str(respData))
-                    except:
+                    except Exception as e:
                         _LOGGER.error('Connection to the site timed out at URL %s', url)
+                        _LOGGER.error(repr(e))
                         print("CFR: An exception occurred reading from url: ", url)
                         print("CFR: Retrying in 5 seconds.")
                         #traceback.print_exc()
@@ -286,8 +293,9 @@ class cfrUpdater:
                             self.mutex.release()
                         self.updaterequiredCallback()
                     time.sleep(60)
-            except:
+            except Exception as e:
                 _LOGGER.error('Updater loop unexpectedly ended (station:%s  dataType:%s) restarts in 60 seconds', self._stationID, self._type)
+                _LOGGER.error(repr(e))
                 time.sleep(60)
 
 
