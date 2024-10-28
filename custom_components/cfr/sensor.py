@@ -234,7 +234,7 @@ class cfrUpdater:
                         time.sleep(t)
                         with urllib.request.urlopen(req,timeout=self._timeout) as response:
                             respData = response.read()
-                        tds = re.findall(r'VALUES\[\d+\] = new Array\("(.*?)","(.*?)","(.*?)","(.*?)"\);',str(respData))
+                        tds = re.findall(r'\w+\[\d+\] = new Array\("(.*?)","(.*?)","(.*?)","(.*?)"\);',str(respData))
                     except Exception as e:
                         _LOGGER.error('Connection to the site timed out at URL %s', url)
                         _LOGGER.error(repr(e))
