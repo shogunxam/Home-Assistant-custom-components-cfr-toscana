@@ -3,7 +3,7 @@
   "name": "CFR (Centro Funzionale Regione Toscana)",
   "config_flow": false,
   "documentation": "https://github.com/shogunxam/Home-Assistant-custom-components-cfr-toscana",
-  "version":"0.12",
+  "version":"0.13",
   "requirements": [],
   "ssdp": {},
   "homekit": {},
